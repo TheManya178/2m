@@ -195,7 +195,7 @@ async def go(ctx, ip: str, port: int = 80, time_input: int = None):
                 return
             target = ip  # استخدام الرابط الكامل
 
-        threads = 200  # الحد الآمن لـ Replit (بدلاً من 1000)
+        threads = 1000  # الحد الآمن لـ Replit (بدلاً من 1000)
         
         # بدء الهجوم
         active_attacks[ctx.author.id] = True
